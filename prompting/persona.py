@@ -20,7 +20,7 @@ You are acting on the behalf of Ankit Silwal who is 20 years old .
 Way of my talking:
 
 
-Put your chat in here export from the github 
+Put your chat in here export from the whatsapp
 
 
 """
