@@ -8,91 +8,65 @@ client = OpenAI(
   api_key=os.getenv("api_key"),
   base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
 )
-SYSTEM_PROMPT="""
-    You are an expert AI Assistant in resolving user queries using chain of thought
-    You work on START,PLAN and OUTPUT steps
-    you neeed to first plan what needs to be donw .The plan can be multiple steps
-    once you think enough plan has been done ,finnaly you can give an output
-    RULES:
-    -Strictly follow the given json output format 
-    -Only run one step at a time
-    -The sequence of stesp is start(where user gives an output),plan (that can be multiple times) and finnaly output(whihc is going 
-    to be displayed).
-    Workflow:
-  - If this is the first response, return Start.
-  - After Start, return ONE Plan.
-  - You may return multiple Plan steps.
-  - When planning is complete, return Output.
+SYSTEM_PROMPT = """
+You are an expert AI assistant that uses a chain-of-thought workflow with three step types: START, PLAN, and OUTPUT.
 
-    Output Json Format:
-    {
-      "step":"Start"|"Plan"|"Output","content:"string"}
-      Example:
-      START:Hey ,can you solve 2+4*4
-      Plan:{"step":"plan","content":"Seems like user is interested into maths problem}
-      plan:{"step":plan":"content":"Looking at the problem,we should use bodmas to solve this"}
-      plan:{"step":"Plan":"content":"Yes bodmas is the correct approach for this problme"}
-      plan:{"step":"plan":"content":"Firsta we sould multiply be 4 thus the new equation is 2+16}
-      plan:{"step":"Plan":content:"now we shouild add the 2 being ans as 18 which is the finall answer" }
-      plan:{"step":"Output":content:"Hence,2+4*4=18"}
-      18
-    }
+Workflow rules:
+- First reply with a single JSON object with "step": "START" describing your understanding of the user's request.
+- After START, reply with one PLAN step at a time (each reply contains exactly one JSON object with "step": "PLAN"). You may return multiple PLAN steps in separate messages to show an incremental plan.
+-Make the planning stage longer if the question is harder like really longer you may take it to 100-1000000 steps depening upon ccomplexity take it minimum 10 for anything
+- When planning is complete, reply with a single JSON object with "step": "OUTPUT" containing the final answer or result.
 
+Formatting rules:
+- Every response must be a single valid JSON object and nothing else (no extra text).
+- The JSON object must have exactly two keys: "step" and "content".
+  - "step": one of "START", "PLAN", "OUTPUT" (uppercase).
+  - "content": a string with the message for that step.
+- Return only one step per response (one JSON object).
+
+Example interaction (each line below represents one assistant reply which must be a single JSON object):
+
+User: "Hey, can you solve 2+4*4?"
+
+Assistant (START reply):
+{"step":"START","content":"User asked to evaluate the arithmetic expression 2+4*4."}
+
+Assistant (PLAN reply):
+{"step":"PLAN","content":"Apply operator precedence: multiply before addition, so compute 4*4 first."}
+
+Assistant (PLAN reply):
+{"step":"PLAN","content":"Compute 4*4 = 16, then add 2 + 16."}
+
+Assistant (OUTPUT reply):
+{"step":"OUTPUT","content":"18"}
+
+Note: Ensure every assistant message is valid JSON exactly as shown. Do not include commentary outside the JSON object.
 """
-
-response=client.chat.completions.create(
-  model="gemini-3.1-flash-lite",
-  response_format={"type":"json_object"},
-  messages=[
-    {"role":"system","content":SYSTEM_PROMPT},
-    {"role":"user","content":"Hey,write a code to add n numbers in python"},
-    {"role":"assistant","content":json.dumps({
-  "step": "Start",
-  "content": "The user wants a Python code snippet to add 'n' numbers."
-})},
-    {"role":"assistant","content":json.dumps([{
-    "step": "Plan",
-    "content": "Define a function that takes a list of numbers as input."
-  },
+print("\n\n\n")
+message_history=[
   {
-    "step": "Plan",
-    "content": "Use the built-in sum() function in Python for efficiency."
-  },
-  {
-    "step": "Plan",
-    "content": "Provide an example usage of the function for the user."
-  },
-  {
-    "step": "Output",
-    "content": "def add_numbers(numbers):\n    return sum(numbers)\n\n# Example usage:\nn = int(input('How many numbers? '))\nnums = [float(input(f'Enter number {i+1}: ')) for i in range(n)]\nprint(f'The sum is: {add_numbers(nums)}')"
-  }])},
-    {"role":"assistant","content":json.dumps([
-  {
-    "step": "Start",
-    "content": "The user wants a Python code snippet to add 'n' numbers."
-  },
-  {
-    "step": "Plan",
-    "content": "Define a function that takes a list of numbers as input."
-  },
-  {
-    "step": "Plan",
-    "content": "Use the built-in sum() function in Python for efficiency."
-  },
-  {
-    "step": "Plan",
-    "content": "Provide an example usage of the function for the user."
-  },
-  {
-    "step": "Output",
-    "content": "def add_numbers(numbers):\n    return sum(numbers)\n\n# Example usage:\nn = int(input('How many numbers? '))\nnums = [float(input(f'Enter number {i+1}: ')) for i in range(n)]\nprint(f'The sum is: {add_numbers(nums)}')"
+    "role":"system","content":SYSTEM_PROMPT
   }
-])},
-    {"role":"assistant","content":json.dumps({
-  "step": "Output",
-  "content": "def add_numbers(numbers):\n    return sum(numbers)\n\n# Example usage:\nn = int(input('How many numbers to add? '))\nnumbers_list = [float(input(f'Enter number {i+1}: ')) for i in range(n)]\nprint(f'The sum is: {add_numbers(numbers_list)}')"
-})}
-    ]
-)
-
-print(response.choices[0].message.content)
+]
+user_query=input("Ask your question:")
+message_history.append({"role":"user","content":user_query})
+while True:
+  response=client.chat.completions.create(
+    model="gemini-3.1-flash-lite",
+    response_format={"type":"json_object"}, 
+    messages=message_history
+  )
+  raw_result=(response.choices[0].message.content)
+  # print(raw_result)
+  message_history.append({"role":"assistant","content":raw_result})
+  parsed_result=json.loads(raw_result)
+  if parsed_result.get("step")=="START":
+    print("START->",parsed_result.get("content"))
+    continue
+  if parsed_result.get("step")=="PLAN":
+    print("Thinking..->",parsed_result.get("content"))
+    continue
+  if parsed_result.get("step")=="OUTPUT":
+    print("Output->",parsed_result.get("content"))
+    break
+print("\n\n\n")
