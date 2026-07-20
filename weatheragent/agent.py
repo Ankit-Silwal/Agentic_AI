@@ -4,14 +4,16 @@ from pydantic import BaseModel, Field
 import json
 import os
 import requests
-from typing import Optional
-
+from typing import Optional, Any,Union
 load_dotenv()
 client = OpenAI(
     api_key=os.getenv("api_key"),
     base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
 )
 
+def run_command(cmd:str):
+  result=os.system(cmd)
+  return result
 
 def get_weather(city: str):
     url = f"https://wttr.in/{city.lower()}?format=%C+%t"
@@ -22,9 +24,14 @@ def get_weather(city: str):
 
     return "Something went wrong"
 
+def write_file(path:str,content:str):
+  with open(path,"w") as f:
+    f.write(content)
 
 available_tools = {
-    "get_weather": get_weather
+    "get_weather": get_weather,
+    "run_command":run_command,
+    "write_file":write_file
 }
 
 SYSTEM_PROMPT = """
@@ -40,6 +47,8 @@ Workflow rules:
 
 Available Tools:
 - get_weather(city:str): Takes city name as an input string and returns the weather information about the city.
+-run_command(cmd:str): Takes a system linux command as string and executes the command on user's system and return the output from that command
+-write_file(path:str,content:str):Path has the information about the path of the file and content has about the content that needs to be written down
 
 Output Json Format:
 
@@ -97,13 +106,16 @@ Assistant:
 """
 
 print("\n\n\n")
+class WriteFileInput(BaseModel):
+    path: str
+    content: str
 
 
 class MyOutputFormat(BaseModel):
-    step: str = Field(..., description="The Id of the step. Example: PLAN, OUTPUT, TOOL, etc.")
-    content: Optional[str] = Field(None, description="The optional string content for the step")
-    tool: Optional[str] = Field(None, description="The Id of the tool to call")
-    input: Optional[str] = Field(None, description="The input params for the tool")
+    step: str
+    content: Optional[str] = None
+    tool: Optional[str] = None
+    input: Optional[Union[str, WriteFileInput]] = None
 
 
 message_history = [
@@ -135,13 +147,17 @@ while True:
     if parsed_result.step == "START":
         print("START->", parsed_result.content)
         continue
-
     if parsed_result.step == "TOOL":
         tool_to_call = parsed_result.tool
         tool_input = parsed_result.input
+        print(parsed_result)
+        print(type(parsed_result.input))
+        print(parsed_result.input)
 
-        tool_response = available_tools[tool_to_call](tool_input)
-
+        if isinstance(tool_input, dict):
+          tool_response = available_tools[tool_to_call](**tool_input)
+        else:
+          tool_response = available_tools[tool_to_call](tool_input)
         print(f"Tool->:{tool_to_call}({tool_input})={tool_response}")
 
         message_history.append({
